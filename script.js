@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const specsQR = document.getElementById('specsQR');
   const specsPrice = document.getElementById('specsPrice');
   const specsStatus = document.getElementById('specsStatus');
-  const PAYMENT_STEP_MS = 20000;
+  const PAYMENT_STEP_MS = 5000;
   const PAYMENT_TOTAL_MS = PAYMENT_STEP_MS * 2;
   const PENDING_KEY = 'mengheng_pending_downloads';
   let activePaymentLink = null;
@@ -267,6 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Step 1: shows the "Generate QR" button. No QR yet, no timer yet.
   function openPaymentModal(link) {
     activePaymentLink = link;
+    sendActivityLog('buy_clicked', link);
 
     specsTitle.textContent = link.dataset.name || 'This product';
     specsLine.textContent = (link.dataset.specs || '').replace(/\\n/g, '\n');
@@ -294,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
       specsConfirm.dataset.productKey === getProductKey(link);
     if (!stillOpen) return;
 
-    specsStatus.textContent = 'Ready to pay. Download will appear in 20 seconds.';
+    specsStatus.textContent = 'Ready to pay. Download will appear in 5 seconds.';
     specsConfirm.hidden = false;
     specsConfirm.innerHTML = 'Ready to Pay';
     specsConfirm.href = '#';
@@ -494,7 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (specsConfirm.dataset.mode === 'ready') {
       e.preventDefault();
-      specsStatus.textContent = 'Waiting... Download will appear in 20 seconds.';
+      specsStatus.textContent = 'Waiting... Download will appear in 5 seconds.';
       specsConfirm.innerHTML = 'Waiting...';
       specsConfirm.setAttribute('aria-disabled', 'true');
       specsConfirm.classList.add('disabled');
