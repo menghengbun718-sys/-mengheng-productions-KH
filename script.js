@@ -1,30 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const themeToggle = document.getElementById('themeToggle');
-  const themeIcon = themeToggle?.querySelector('.theme-toggle-icon');
-  const themeText = themeToggle?.querySelector('.theme-toggle-text');
-  const savedTheme = localStorage.getItem('mengheng-theme');
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
-
-  function applyTheme(theme) {
-    document.body.setAttribute('data-theme', theme);
-    if (theme === 'dark') {
-      themeIcon.textContent = '☀️';
-      themeText.textContent = 'Light';
-    } else {
-      themeIcon.textContent = '🌙';
-      themeText.textContent = 'Theme';
-    }
-    localStorage.setItem('mengheng-theme', theme);
-  }
-
-  applyTheme(initialTheme);
-
-  themeToggle?.addEventListener('click', () => {
-    const nextTheme = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    applyTheme(nextTheme);
-  });
-
   initHeroShader();
 
   const grid = document.getElementById('productGrid');
@@ -132,23 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const specsQR = document.getElementById('specsQR');
   const specsPrice = document.getElementById('specsPrice');
   const specsStatus = document.getElementById('specsStatus');
-  const PAYMENT_STEP_MS = 5000;
-  const PAYMENT_TOTAL_MS = PAYMENT_STEP_MS * 2;
-  const PENDING_KEY = 'mengheng_pending_downloads';
   let activePaymentLink = null;
-  let paymentTimer = null;
-
-  function readPendingDownloads() {
-    try {
-      return JSON.parse(localStorage.getItem(PENDING_KEY) || '{}');
-    } catch {
-      return {};
-    }
-  }
-
-  function savePendingDownloads(data) {
-    localStorage.setItem(PENDING_KEY, JSON.stringify(data));
-  }
 
   function getProductKey(link) {
     return link.dataset.name || link.getAttribute('href') || link.textContent.trim();
@@ -178,90 +136,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function isProductPending(link) {
-    const data = readPendingDownloads();
-    const key = getProductKey(link);
-    const entry = data[key];
-    if (!entry) return false;
-    if (Date.now() >= Number(entry.expiresAt || 0)) {
-      delete data[key];
-      savePendingDownloads(data);
-      return false;
-    }
-    return true;
-  }
-
-  function setProductWaiting(link) {
-    const key = getProductKey(link);
-    const data = readPendingDownloads();
-    const startedAt = Date.now();
-    data[key] = {
-      readyAt: startedAt + PAYMENT_STEP_MS,
-      expiresAt: startedAt + PAYMENT_TOTAL_MS,
-    };
-    savePendingDownloads(data);
-    if (!link.dataset.originalLabel) {
-      link.dataset.originalLabel = link.innerHTML;
-    }
-    if (!Object.prototype.hasOwnProperty.call(link.dataset, 'originalHref')) {
-      link.dataset.originalHref = link.getAttribute('href') || '';
-    }
-    link.dataset.pending = 'true';
-    link.textContent = 'Waiting...';
-    link.setAttribute('aria-disabled', 'true');
-    link.style.pointerEvents = 'none';
-    link.style.opacity = '0.75';
-  }
-
   function closeSpecs() {
     specsOverlay.classList.remove('open');
   }
 
   function cancelPayment() {
-    const link = activePaymentLink;
-    clearTimeout(paymentTimer);
-    paymentTimer = null;
-
-    if (link) {
-      const data = readPendingDownloads();
-      delete data[getProductKey(link)];
-      savePendingDownloads(data);
-      link.dataset.pending = 'false';
-      link.dataset.unlocked = 'false';
-      link.removeAttribute('aria-disabled');
-      link.style.pointerEvents = '';
-      link.style.opacity = '';
-      if (Object.prototype.hasOwnProperty.call(link.dataset, 'originalHref')) {
-        link.setAttribute('href', link.dataset.originalHref);
-      }
-      if (link.dataset.originalLabel) {
-        link.innerHTML = link.dataset.originalLabel;
-      }
-      delete link.dataset.originalLabel;
-      delete link.dataset.originalHref;
-    }
-
-    activePaymentLink = null;
     closeSpecs();
-  }
-
-  // Turns the card's own button into a real, ready-to-click download link.
-  function unlockProductButton(link) {
-    const key = getProductKey(link);
-    const data = readPendingDownloads();
-    delete data[key];
-    savePendingDownloads(data);
-    link.dataset.pending = 'false';
-    link.dataset.unlocked = 'true';
-    link.removeAttribute('aria-disabled');
-    link.style.pointerEvents = '';
-    link.style.opacity = '';
-    const downloadLink = link.dataset.downloadLink || link.getAttribute('href') || '#';
-    link.setAttribute('href', downloadLink);
-    if (link.dataset.downloadFile) {
-      link.setAttribute('download', link.dataset.downloadFile);
-    }
-    link.innerHTML = 'Download <span>&#8595;</span>';
   }
 
   // Step 1: shows the "Generate QR" button. No QR yet, no timer yet.
@@ -290,114 +170,45 @@ document.addEventListener('DOMContentLoaded', () => {
     specsOverlay.classList.add('open');
   }
 
-  function showReadyToPay(link) {
-    const stillOpen = specsOverlay.classList.contains('open') &&
-      specsConfirm.dataset.productKey === getProductKey(link);
-    if (!stillOpen) return;
+  function openSellModal(link) {
+    activePaymentLink = null;
+    sendActivityLog('buy_clicked', link);
 
-    specsStatus.textContent = 'Ready to pay. Download will appear in 5 seconds.';
+    specsTitle.textContent = link.dataset.name || 'This product';
+    specsLine.textContent = (link.dataset.specs || '').replace(/\\n/g, '\n');
+    specsQRWrap.hidden = true;
+    specsQR.src = '';
+    specsPrice.textContent = link.dataset.price || 'Price not specified';
+    specsStatus.textContent = 'Contact MengHeng Productions on Telegram to purchase this item.';
+
     specsConfirm.hidden = false;
-    specsConfirm.innerHTML = 'Ready to Pay';
-    specsConfirm.href = '#';
-    specsConfirm.removeAttribute('target');
-    specsConfirm.removeAttribute('rel');
+    specsConfirm.innerHTML = 'Contact to buy <span>&#8599;</span>';
+    specsConfirm.href = 'https://t.me/MengHeng_KH';
+    specsConfirm.target = '_blank';
+    specsConfirm.rel = 'noopener noreferrer';
     specsConfirm.removeAttribute('download');
     specsConfirm.removeAttribute('aria-disabled');
     specsConfirm.classList.remove('disabled');
-    specsConfirm.dataset.mode = 'ready';
-  }
-
-  function schedulePaymentStages(link, readyDelay) {
-    clearTimeout(paymentTimer);
-    paymentTimer = setTimeout(() => {
-      showReadyToPay(link);
-      const data = readPendingDownloads();
-      const entry = data[getProductKey(link)];
-      const remaining = Math.max(0, Number(entry?.expiresAt || Date.now()) - Date.now());
-      paymentTimer = setTimeout(() => finishPayment(link), remaining);
-    }, Math.max(0, readyDelay));
-  }
-
-  // Step 2: reveals the QR code and starts the two 20-second stages.
-  function generateQR(link) {
-    const paymentQR = link.dataset.paymentQr;
-    specsQR.src = paymentQR || '';
-    specsQR.alt = `${specsTitle.textContent} payment QR code`;
-    specsQRWrap.hidden = !paymentQR;
-
-    specsStatus.textContent = 'Scan the QR code to complete your payment. Your download link will appear automatically. | សូមស្កេន QR ដើម្បីទូទាត់ ប៊ូតុងទាញយកនឹងលេចឡើងដោយស្វ័យប្រវត្តិ';
-
-    // Hide the next-step button until the first 20-second stage completes.
-    specsConfirm.hidden = true;
-    specsConfirm.dataset.mode = 'waiting';
-
-    setProductWaiting(link);
-    sendActivityLog('qr_generated', link);
-
-    schedulePaymentStages(link, PAYMENT_STEP_MS);
-  }
-
-  // Called once the 20s wait is over: unlocks the card button and,
-  // if the modal for this product is still open, reveals the Download button in it.
-  function finishPayment(link) {
-    unlockProductButton(link);
-    sendActivityLog('download_ready', link);
-
-    const stillOpen = specsOverlay.classList.contains('open') &&
-      specsConfirm.dataset.productKey === getProductKey(link);
-
-    if (stillOpen) {
-      specsStatus.textContent = 'Payment confirmed. Your download is ready.';
-      specsConfirm.hidden = false;
-      specsConfirm.innerHTML = 'Download <span>&#8595;</span>';
-      specsConfirm.removeAttribute('aria-disabled');
-      specsConfirm.classList.remove('disabled');
-      const destination = link.dataset.downloadLink || link.getAttribute('href') || '#';
-      specsConfirm.href = destination;
-      if (/^https?:\/\//i.test(destination)) {
-        specsConfirm.target = '_blank';
-        specsConfirm.rel = 'noopener noreferrer';
-      } else {
-        specsConfirm.removeAttribute('target');
-        specsConfirm.removeAttribute('rel');
-      }
-      specsConfirm.setAttribute('download', link.dataset.downloadFile || link.getAttribute('download') || '');
-      specsConfirm.dataset.mode = 'download';
-    }
-
-    paymentTimer = null;
-    if (activePaymentLink === link) activePaymentLink = null;
-  }
-
-  // Re-shows the QR/waiting screen for a product that is already pending
-  // (e.g. the customer closed the modal and clicked the card again).
-  function openWaitingModal(link) {
-    specsTitle.textContent = link.dataset.name || 'This product';
-    specsLine.textContent = (link.dataset.specs || '').replace(/\\n/g, '\n');
-
-    const paymentQR = link.dataset.paymentQr;
-    specsQR.src = paymentQR || '';
-    specsQR.alt = `${specsTitle.textContent} payment QR code`;
-    specsQRWrap.hidden = !paymentQR;
-
-    specsPrice.textContent = link.dataset.price || 'Payment required';
-    specsStatus.textContent = 'Scan the QR code to complete your payment. Your download link will appear automatically. | សូមស្កេន QR ដើម្បីទូទាត់ ប៊ូតុងទាញយកនឹងលេចឡើងដោយស្វ័យប្រវត្តិ';
-
+    specsConfirm.dataset.mode = 'contact';
     specsConfirm.dataset.productKey = getProductKey(link);
-    activePaymentLink = link;
 
     specsOverlay.classList.add('open');
+  }
 
-    const entry = readPendingDownloads()[getProductKey(link)];
-    const readyAt = Number(entry?.readyAt || Date.now() + PAYMENT_STEP_MS);
-    if (Date.now() >= readyAt) {
-      showReadyToPay(link);
-      schedulePaymentStages(link, 0);
-    } else {
-      specsConfirm.hidden = true;
-      specsConfirm.dataset.mode = 'waiting';
-      schedulePaymentStages(link, readyAt - Date.now());
+  // Reveal the product's configured payment QR without claiming payment succeeded.
+  function generateQR(link) {
+    const paymentQR = link.dataset.paymentQr;
+    if (!paymentQR) {
+      specsStatus.textContent = 'Payment QR is not available for this product yet.';
+      return;
     }
+
+    specsQR.src = paymentQR;
+    specsQR.alt = `${specsTitle.textContent} payment QR code`;
+    specsQRWrap.hidden = false;
+    specsStatus.textContent = 'Scan this KHQR code to pay. Your download will be provided after payment is confirmed.';
+    specsConfirm.hidden = true;
+    sendActivityLog('qr_generated', link);
   }
 
   function openFreeDownloadModal(link) {
@@ -427,59 +238,19 @@ document.addEventListener('DOMContentLoaded', () => {
     specsOverlay.classList.add('open');
   }
 
-  // Restore state after a page reload (payment pending, or already unlocked).
-  function restorePendingState(link) {
-    if (!link.dataset.paymentQr) return;
-    const key = getProductKey(link);
-    const data = readPendingDownloads();
-    const entry = data[key];
-    if (!entry) return;
-    const msLeft = Number(entry.expiresAt || 0) - Date.now();
-    if (msLeft <= 0) {
-      delete data[key];
-      savePendingDownloads(data);
-      return;
-    }
-    link.dataset.pending = 'true';
-    if (!link.dataset.originalLabel) {
-      link.dataset.originalLabel = link.innerHTML;
-    }
-    link.textContent = 'Waiting...';
-    link.setAttribute('aria-disabled', 'true');
-    link.style.pointerEvents = 'none';
-    link.style.opacity = '0.75';
-    const readyAt = Number(entry.readyAt || (Number(entry.expiresAt || 0) - PAYMENT_STEP_MS));
-    if (Date.now() >= readyAt) {
-      schedulePaymentStages(link, 0);
-    } else {
-      schedulePaymentStages(link, readyAt - Date.now());
-    }
-  }
-
   grid.querySelectorAll('a.download-button[data-specs]:not(.out-of-stock)').forEach((link) => {
-    restorePendingState(link);
-
     link.addEventListener('click', (e) => {
-      // Already unlocked: it's now a normal working download link, let it through.
-      if (link.dataset.unlocked === 'true') {
-        return;
-      }
-
-      // Still waiting on a payment started earlier: reopen the waiting screen.
-      if (link.dataset.pending === 'true') {
-        e.preventDefault();
-        openWaitingModal(link);
-        return;
-      }
-
       // External free links should leave the site directly in a new tab.
-      if (!link.dataset.paymentQr && /^https?:\/\//i.test(link.href)) {
+      if (!link.dataset.paymentQr && link.closest('.product-card')?.dataset.status !== 'sell' &&
+          /^https?:\/\//i.test(link.href)) {
         return;
       }
 
       e.preventDefault();
       if (link.dataset.paymentQr) {
         openPaymentModal(link);
+      } else if (link.closest('.product-card')?.dataset.status === 'sell') {
+        openSellModal(link);
       } else {
         openFreeDownloadModal(link);
       }
@@ -493,18 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (specsConfirm.dataset.mode === 'ready') {
-      e.preventDefault();
-      specsStatus.textContent = 'Waiting... Download will appear in 5 seconds.';
-      specsConfirm.innerHTML = 'Waiting...';
-      specsConfirm.setAttribute('aria-disabled', 'true');
-      specsConfirm.classList.add('disabled');
-      specsConfirm.dataset.mode = 'waiting';
-      return;
-    }
-
-    // 'waiting' mode: button is hidden, so this shouldn't fire.
-    // 'download' mode: it's a real download link — let it through, then close.
+    if (specsConfirm.dataset.mode === 'contact') return;
     setTimeout(closeSpecs, 200);
   });
 
